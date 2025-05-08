@@ -10,7 +10,7 @@ package one.dedic.consolelode.data;
  * umistit.
  * @author sdedic
  */
-public class Placement {
+public final class Placement {
     /**
      * Puvodni sablona
      */
@@ -154,6 +154,7 @@ public class Placement {
     }
     
     private Cell[][] shape() {
+        
         if (shape == null) {
             Cell[][] s = template.getCells();
             switch (rotation) {

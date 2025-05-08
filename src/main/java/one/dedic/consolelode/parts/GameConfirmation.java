@@ -35,25 +35,17 @@ import one.dedic.consolelode.GameOptions;
  *
  * @author sdedic
  */
-public class GameConfirmation implements Controller {
-    private final GameOptions options;
-    private final Screen screen;
-    private final TextGraphics graphics;
-    private TextGraphics g;
-
+public class GameConfirmation extends SetupController {
     private static final int SHIP_LIST_COL = 25;
     private static final int SHIP_LIST_ROW = 2;
     
-    public GameConfirmation(GameOptions options, Screen screen) {
-        this.options = options;
-        this.screen = screen;
-
-        graphics = screen.newTextGraphics();
+    public GameConfirmation() {
         g = graphics.newTextGraphics(new TerminalPosition(SHIP_LIST_COL, 0), new TerminalSize(
                 graphics.getSize().getColumns() - SHIP_LIST_COL, 30));
     }
-    
-    void printInstructions() {
+
+    @Override
+    protected void printDescription() {
         TextGraphicsWriter writer = new TextGraphicsWriter(g);
         writer.setForegroundColor(TextColor.ANSI.GREEN_BRIGHT);
         writer.enableModifiers(SGR.BOLD);
@@ -63,23 +55,8 @@ public class GameConfirmation implements Controller {
     }
 
     @Override
-    public Result execute() throws IOException {
-        printInstructions();
-        screen.refresh();
-        
-        Result r = null;
-        
-        do {
-            r = loop();
-        } while (r == null);
-        g.fill(' ');
-        screen.refresh();
-        return r;
-    }
-
-    public Result loop() throws IOException {
-        KeyStroke ks = screen.readInput();
-        if (ks.getKeyType() == KeyType.Character) {
+    protected NextState handle(KeyStroke ks) {
+        if (ks.getKeyType() == KeyType.CHARACTER) {
             switch (Character.toLowerCase(ks.getCharacter())) {
                 case 'u':
                 case 'o':

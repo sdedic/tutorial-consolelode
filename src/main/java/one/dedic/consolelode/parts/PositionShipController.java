@@ -24,13 +24,13 @@ import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.graphics.TextGraphics;
 import com.googlecode.lanterna.graphics.TextGraphicsWriter;
 import com.googlecode.lanterna.input.KeyStroke;
-import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.screen.Screen;
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import one.dedic.consolelode.Controller;
 import one.dedic.consolelode.GameOptions;
+import one.dedic.consolelode.GameState;
 import one.dedic.consolelode.data.ItemTemplate;
 import one.dedic.consolelode.data.Placement;
 import one.dedic.consolelode.model.BoardState;
@@ -39,21 +39,10 @@ import one.dedic.consolelode.model.BoardState;
  *
  * @author sdedic
  */
-public class PositionShipController implements Controller {
-    private final GameOptions options;
-    private final Screen screen;
-    private BoardState boardState;
-    
-    private BoardPrinter boardPrinter;
-    
+public class PositionShipController extends SetupController {
     private ItemTemplate selectedItem;
     private Placement placement;
 
-    /**
-     * Cela obrazovka
-     */
-    private TextGraphics graphics;
-    
     /**
      * Oblast napravo od hraci plochy, asi jen pro vymaz
      */
@@ -69,63 +58,67 @@ public class PositionShipController implements Controller {
      */
     private TextGraphics statusG;
     
+    private boolean placed;
+    private boolean statusError;
+    
     private static final int SHIP_LIST_COL = 25;
     private static final int STATUS_ROW = 3;
 
-    public PositionShipController(GameOptions options, Screen screen) {
-        this.options = options;
-        this.screen = screen;
-
-        graphics = screen.newTextGraphics();
+    @Override
+    public void setup() {
+        super.setup();
         TerminalPosition topLeft = new TerminalPosition(SHIP_LIST_COL, 0);
         instructionsG = graphics.newTextGraphics(topLeft, 
                 graphics.getSize().withRelativeColumns(-SHIP_LIST_COL).withRows(6));
 
         statusG = graphics.newTextGraphics(topLeft.withRelativeRow(instructionsG.getSize().getRows() + 2),
                 new TerminalSize(graphics.getSize().getColumns() - SHIP_LIST_COL, 5));
+        
+        
+        TextGraphics g2 = graphics.newTextGraphics(statusG.toScreenPosition(TerminalPosition.TOP_LEFT_CORNER).withRelative(0, statusG.getSize().getRows()),
+                new TerminalSize(graphics.getSize().getColumns() - SHIP_LIST_COL, 5));
+        setStatusTextGraphics(g2);
 
         sideG = graphics.newTextGraphics(topLeft, 
                 graphics.getSize().withRelativeColumns(-SHIP_LIST_COL).withRows(30));
-        
-        boardPrinter = new BoardPrinter(options, graphics);
-    }
-
-    public void setBoardState(BoardState boardState) {
-        this.boardState = boardState;
-        boardPrinter.setBoardState(boardState);
     }
 
     public void setSelectedItem(ItemTemplate selectedItem) {
         this.selectedItem = selectedItem;
-        this.placement = new Placement(selectedItem);
+        if (selectedItem != null) {
+            this.placement = new Placement(selectedItem);
+        } else {
+            this.placement = null;
+        }
         boardState.modifyCurrent(null);
     }
 
     @Override
-    public Result execute() throws IOException {
-        printInstructions();
-        printStatusTemplate();
-        Result r = null;
-        
-        do {
-            screen.refresh();
-            r = loop();
-        } while (r == null);
-        sideG.fill(' ');
-        screen.refresh();
-        return r;
+    public void initialize() {
+        super.initialize();
+        placed = false;
+        setSelectedItem(boardState.getSelectedTemplate());
     }
-    
+
+    @Override
+    protected void printDescription() {
+        super.printDescription();
+        printInstructions();
+    }
+
+    @Override
+    protected void printLayout() {
+        super.printLayout();
+        printStatusTemplate();
+    }
+
     void printInstructions() {
         TextGraphicsWriter writer = new TextGraphicsWriter(instructionsG);
         writer.putString("Pouzij sipky, nebo souradnice pismeno-cislo (ENTER za cislem). ");
         writer.putString("PgUp, PgDn - otaceni.\n");
         writer.putString("Home, End - zrcadleni.\n");
         writer.putString("E - oprava existujici lodi\n");
-
-        if (placement != null) {
-            writer.putString("\nUmisti lod na plan:");
-        }
+        writer.putString("\nUmisti lod na plan. (ESC) zrusi akci:");
     }
     
     private static final int STATUS_COORDS_ROW = 5;
@@ -147,8 +140,7 @@ public class PositionShipController implements Controller {
     }
     
     void clearStatusMessage() {
-        statusMessage = null;
-        statusG.drawLine(0, STATUS_MESSAGE_ROW, statusG.getSize().getColumns(), STATUS_MESSAGE_ROW, ' ');
+        statusPrinter.clearStatusMessage();
     }
     
     void printStatus() {
@@ -178,22 +170,19 @@ public class PositionShipController implements Controller {
             }
         }
         
-        
-        if (statusMessage != null) {
-            TextColor fore = statusG.getForegroundColor();
-            statusG.setForegroundColor(TextColor.ANSI.RED_BRIGHT);
-            statusG.putString(0, STATUS_MESSAGE_ROW, statusMessage);
-            statusG.setForegroundColor(fore);
-        }
+        statusPrinter.printStatus();
     }
     
-    void printStatusMessage(String s) {
-        this.statusMessage = s;
+    void printStatusMessage(String s, boolean error) {
+        statusPrinter.printStatusMessage(s, error);
         printStatus();
     }
     
+    void printStatusMessage(String s) {
+        printStatusMessage(s, true);
+    }
+    
     private int rowNumber = -1;
-    private String statusMessage;
     
     void updateCoordinates() {
         boardPrinter.printBoardContents();
@@ -203,8 +192,10 @@ public class PositionShipController implements Controller {
     
     void processCharacters(char c) {
         if (c >= 'A' && c <= 'Z') {
-            boardState.setCursorX(c - 'A');
+            int col = c - 'A';
+            boardState.setCursorX(col);
             updateCoordinates();
+            
         } else {
             processNumeric(c);
         }
@@ -242,16 +233,38 @@ public class PositionShipController implements Controller {
                 updateCoordinates();
             }
             return;
-        } else {
-            placement.setX(boardState.getCursorX());
-            placement.setY(boardState.getCursorY());
+        }
+        
+        if (placement != null) {
+            if (boardState.getCursorX() != -1) {
+                placement.setX(boardState.getCursorX());
+            }
+            if (boardState.getCursorY() != -1) {
+                placement.setY(boardState.getCursorY());
+            }
             boardState.modifyCurrent(placement);
             boardState.resetCursor();
+            
+            boardState.refreshState();
 
             boardPrinter.printBoardLabels();
             boardPrinter.printBoardContents();
+            
             clearStatusMessage();
-            printStatus();
+            placed = false;
+            switch (boardState.getShipState()) {
+                case OutOfGrid:
+                    printStatusMessage("Cast lodi je mimo plochu.");
+                    break;
+                case Overlapping:
+                case Touching:
+                    printStatusMessage("Lod se prekryva, nebo dotyka jine.");
+                    break;
+                case OK:
+                    placed = true;
+                    printStatusMessage("Potvrd umisteni lodi ENTER.", false);
+                    break;
+            }
         }
     }
     
@@ -276,10 +289,7 @@ public class PositionShipController implements Controller {
         if (rowNumber >= 0) {
             return;
         }
-        if (!boardState.isTargetting()) {
-            boardState.setCursorX(placement.getX());
-            boardState.setCursorY(placement.getY());
-        }
+        startBoardTargetting();
         int max = left ? Integer.MAX_VALUE : options.getBoardSize() - 1;
         int min = left ? 1 : 0;
         
@@ -297,10 +307,7 @@ public class PositionShipController implements Controller {
         if (rowNumber >= 0) {
             return;
         }
-        if (!boardState.isTargetting()) {
-            boardState.setCursorX(placement.getX());
-            boardState.setCursorY(placement.getY());
-        }
+        startBoardTargetting();
         int max = up ? Integer.MAX_VALUE : options.getBoardSize() - 1;
         int min = up ? 1 : 0;
 
@@ -328,50 +335,80 @@ public class PositionShipController implements Controller {
         return Result.CANCEL;
     }
     
-    Result loop() throws IOException {
-        KeyStroke ks = screen.readInput();
-        
+    Result editCurrentTarget() {
+        return null;
+    }
+    
+    @Override
+    protected NextState handle(KeyStroke ks) {
         if (rowNumber > -1) {
             switch (ks.getKeyType()) {
-                case Character:
+                case CHARACTER:
                     processNumeric(ks.getCharacter());
                     return null;
-                case Escape:
+                case ESCAPE:
                     cancelStageOrNumber();
                     return null;
                     
-                case Enter:
+                case ENTER:
                     confirmNumberOrShip();
                     return null;
             }
         }
         
         switch (ks.getKeyType()) {
-            case Character:
-                processCharacters(Character.toUpperCase(ks.getCharacter()));
+            case CHARACTER:
+                char c = Character.toUpperCase(ks.getCharacter());
+                if (c == 'E') {
+                    return null;
+                }
+                processCharacters(c);
                 return null;
                 
-            case Enter:
-                confirmNumberOrShip();
-                return null;
+            case ENTER:
+                if (!placed) {
+                    confirmNumberOrShip();
+                    return CONTINUE;
+                } else if (boardState.getShipState() == BoardState.ShipState.OK
+                        && boardState.getCurrent() != null) {
+                    boardState.finishEditing();
+                    return NextState.create(Result.OK, GameState.SIZE_SELECT);
+                }  else {
+                    return CONTINUE;
+                }
                 
-            case Escape:
-                return cancelStageOrNumber();
+            case ESCAPE:
+                Result r = cancelStageOrNumber();
+                if (r != null) {
+                    if (placed) {
+                        boardState.removeItem(placement);
+                        boardState.resetCursor();
+                        boardPrinter.printBoardContents();
+                    }
+                }
+                return r == null ? CONTINUE : NextState.result(r);
                 
-            case ArrowUp:
+            case ARROW_UP:
                 moveUpDown(true);
                 break;
-            case ArrowDown:
+            case ARROW_DOWN:
                 moveUpDown(false);
                 break;
                 
-            case ArrowLeft:
+            case ARROW_LEFT:
                 moveLeftRight(true);
                 break;
-            case ArrowRight:
+            case ARROW_RIGHT:
                 moveLeftRight(false);
                 break;
+            default:
+                return null;
+        }
+        if (placed) {
+            placed = false;
+            clearStatusMessage();
         }
         return null;
     }
+
 }

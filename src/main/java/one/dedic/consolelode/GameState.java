@@ -36,17 +36,17 @@ public enum GameState {
     /**
      * Umisteni lodi
      */
-    POSITION,
+    POSITION(SIZE_SELECT),
     
     /**
      * Vybirani jiz umistene lodi k uprave,
      */
-    PICKUP,
+    PICKUP(SIZE_SELECT, POSITION),
     
     /**
      * Pozicovani nebo uprava uz umistene lodi
      */
-    EDIT,
+    EDIT(SIZE_SELECT, POSITION),
     
     /**
      * Ukladani hry
@@ -58,6 +58,8 @@ public enum GameState {
      */
     LOAD,
     
+    CONFIRM,
+    
     /**
      * Tah hrace, vybirani strelecke pozice
      */
@@ -68,7 +70,45 @@ public enum GameState {
      */
     ENEMY,
     
+    /**
+     * Konec hry
+     */
     ENDGAME,
     
-    EXIT,
+    /**
+     * Ukonceni programu
+     */
+    EXIT;
+
+    private GameState next;
+    private GameState prev;
+    
+    private GameState() {}
+
+    private GameState(GameState next) {
+        this.next = next;
+    }
+
+    private GameState(GameState prev, GameState next) {
+        this.next = next;
+        this.prev = prev;
+    }
+
+    public GameState getNext() {
+        if (next != null) {
+            return next;
+        } else {
+            return GameState.values()[ordinal() + 1];
+        }
+    }
+
+    public GameState getPrev() {
+        if (prev != null) {
+            return prev;    
+        } if (ordinal() > 0) {
+            return GameState.values()[ordinal() - 1];
+        } else {
+            return this;
+        }
+    }
 }

@@ -129,6 +129,7 @@ public class BoardPrinter {
                             foreColor = TextColor.ANSI.YELLOW_BRIGHT;
                             break;
                         case Overlapping:
+                        case Touching:
                             foreColor = TextColor.ANSI.MAGENTA_BRIGHT;
                             break;
                         case OutOfGrid:

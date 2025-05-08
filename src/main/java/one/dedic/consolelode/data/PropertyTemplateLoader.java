@@ -10,6 +10,8 @@ import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
 
+import static one.dedic.consolelode.data.Cell.*;
+
 /**
  * Nacte definice lodi ze zadaneho souboru do knihovny lodi.
  * @author sdedic
@@ -27,6 +29,9 @@ public class PropertyTemplateLoader {
             p.load(is);
             processProperties(p);
         }
+        Cell[][] x = new Cell[][] {
+            { EMPTY }
+        };
     }
     
     void processProperties(Properties p) {

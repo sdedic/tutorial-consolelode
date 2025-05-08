@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package one.dedic.consolelode.data;
+package io;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,17 +28,42 @@ import one.dedic.consolelode.GameOptions;
  * @author sdedic
  */
 public class GameOptionsLoader {
-    private final GameOptions options;
+    private GameOptions options;
+    private Properties props = new Properties();
 
     public GameOptionsLoader(GameOptions options) {
         this.options = options;
     }
 
-    public void loadResource(String resourceName) throws IOException {
+    public Properties getProps() {
+        return props;
+    }
+
+    public void setProps(Properties props) {
+        this.props = props;
+    }
+
+    public void loadOptions(String resourceName) throws IOException {
         try (InputStream is = getClass().getClassLoader().getResourceAsStream(resourceName)) {
-            Properties p = new Properties();
-            p.load(is);
-            processProperties(p);
+            props.load(is);
+        }
+        processProperties(props);
+    }
+    
+    public void loadOptions() {
+        processProperties(props);
+    }
+    
+    public void saveOptions() {
+        props.setProperty("boardSize", Integer.toString(options.getBoardSize()));
+        
+        for (int sz = 1; sz <= GameOptions.MAX_SHIP_SIZE; sz++) {
+            int count = options.getSizeCount(sz);
+            if (count > 0) {
+                props.setProperty("shipCount." + sz, Integer.toString(count));
+            } else {
+                break;
+            }
         }
     }
     

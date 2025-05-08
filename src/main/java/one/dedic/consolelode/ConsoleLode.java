@@ -124,15 +124,15 @@ public class ConsoleLode {
             
             int ns = -1;
             switch (ks.getKeyType()) {
-                case ArrowDown:
+                case ARROW_DOWN:
                     ns = Math.min(5, size + 1);
                     break;
-                case ArrowUp:
+                case ARROW_UP:
                     ns = Math.max(1, size - 1);
                     break;
-                case Enter:
+                case ENTER:
                     break L;
-                case Character:
+                case CHARACTER:
                     switch (ks.getCharacter()) {
                         case '1':
                         case '2':

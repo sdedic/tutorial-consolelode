@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import one.dedic.consolelode.GameOptions;
 import one.dedic.consolelode.data.Cell;
+import one.dedic.consolelode.data.ItemTemplate;
 import one.dedic.consolelode.data.Placement;
 
 /**
@@ -20,6 +21,8 @@ public class BoardState {
     private final Cell[][]    boardState;
     private int[] sizeCounts = new int[GameOptions.MAX_SHIP_SIZE];
     
+    private int currentSize;
+    private ItemTemplate selectedTemplate;
     private List<Placement> placedItems = new ArrayList<>();
     private Placement current;
     private int cursorX;
@@ -37,6 +40,8 @@ public class BoardState {
          */
         Overlapping,
         
+        Touching,
+        
         /**
          * Umistovana lod presahuje hraci prostor
          */
@@ -52,6 +57,10 @@ public class BoardState {
         }
         resetCursor();
     }
+    
+    public Cell[][] getBoard() {
+        return boardState;
+    }
 
     public ShipState getShipState() {
         return shipState;
@@ -59,6 +68,30 @@ public class BoardState {
 
     public Placement getCurrent() {
         return current;
+    }
+
+    public List<Placement> getPlacedItems() {
+        return placedItems;
+    }
+
+    public void setPlacedItems(List<Placement> placedItems) {
+        this.placedItems = placedItems;
+    }
+
+    public int getCurrentSize() {
+        return currentSize;
+    }
+
+    public void setCurrentSize(int currentSize) {
+        this.currentSize = currentSize;
+    }
+
+    public ItemTemplate getSelectedTemplate() {
+        return selectedTemplate;
+    }
+
+    public void setSelectedTemplate(ItemTemplate selectedTemplate) {
+        this.selectedTemplate = selectedTemplate;
     }
     
     public Placement findItem(int x, int y) {
@@ -107,6 +140,12 @@ public class BoardState {
     }
     
     public Cell getCell(int x, int y) {
+        if (x < 0 || y < 0) {
+            return Cell.UNKNOWN;
+        }
+        if (y >= boardState.length || x >= boardState[0].length) {
+            return Cell.WATER;
+        }
         Cell c = boardState[y][x];
         if (current != null && current.contains(x, y)) {
             c = current.getCell(x, y);
@@ -125,11 +164,11 @@ public class BoardState {
             shipState = ShipState.OK;
             return;
         }
-        if (current.getX() + current.getWidth() >= options.getBoardSize()) {
+        if (current.getX() + current.getWidth() > options.getBoardSize()) {
             shipState = ShipState.OutOfGrid;
             return;
         }
-        if (current.getY() + current.getHeight()>= options.getBoardSize()) {
+        if (current.getY() + current.getHeight() > options.getBoardSize()) {
             shipState = ShipState.OutOfGrid;
             return;
         }
@@ -141,10 +180,34 @@ public class BoardState {
                         shipState = ShipState.Overlapping;
                         return;
                     }
+                    if (shipAround(x, y)) {
+                        shipState = ShipState.Touching;
+                        return;
+                    }
                 }
             }
         }
         shipState = ShipState.OK;
+    }
+    
+    boolean checkAround(int x, int y) {
+        if (current != null && current.contains(x, y)) {
+            return false;
+        }
+        return getCell(x, y).isShip();
+    }
+    
+    boolean shipAround(int x, int y) {
+        return 
+                checkAround(x, y - 1) ||
+                checkAround(x + 1, y - 1) ||
+                checkAround(x + 1, y) ||
+                checkAround(x + 1, y + 1) ||
+                checkAround(x, y + 1) ||
+                checkAround(x - 1, y + 1) ||
+                checkAround(x - 1, y) ||
+                checkAround(x - 1, y - 1);
+                
     }
     
     public int getMissingCount(int size) {
@@ -159,15 +222,17 @@ public class BoardState {
         int ox = placement.getX();
         int oy = placement.getY();
         Cell[][] shape = placement.getShape();
-        for (int i = 0; i < placement.getWidth(); i++) {
-            for (int j = 0; j < placement.getWidth(); i++) {
+        for (int i = 0; i < placement.getHeight(); i++) {
+            for (int j = 0; j < placement.getWidth(); j++) {
                 int x = ox + j;
                 int y = oy + i;
                 Cell c = shape[i][j];
                 if (c == null) {
                     continue;
                 }
-                boardState[y][x] = null;
+                if (c.isShip()) {
+                    boardState[y][x] = null;
+                }
             }
         }
     }
@@ -176,8 +241,8 @@ public class BoardState {
         int ox = placement.getX();
         int oy = placement.getY();
         Cell[][] shape = placement.getShape();
-        for (int i = 0; i < placement.getWidth(); i++) {
-            for (int j = 0; j < placement.getWidth(); i++) {
+        for (int i = 0; i < placement.getHeight(); i++) {
+            for (int j = 0; j < placement.getWidth(); j++) {
                 int x = ox + j;
                 int y = oy + i;
                 Cell c = shape[i][j];
@@ -212,7 +277,7 @@ public class BoardState {
             drawItem(current);
         }
         current = newCurrent;
-        if (placedItems.remove(newCurrent)) {
+        if (newCurrent != null && placedItems.remove(newCurrent)) {
             eraseItem(newCurrent);
         }
         refreshState();
@@ -224,7 +289,7 @@ public class BoardState {
             return;
         }
         if (this.current != null) {
-            int shipSize = current.getTemplate().getShipSize();
+            int shipSize = this.current.getTemplate().getShipSize();
             if (shipSize > 0) {
                 sizeCounts[shipSize - 1]--;
             }
@@ -241,10 +306,14 @@ public class BoardState {
     
     public void removeItem(Placement placement) {
         placedItems.remove(placement);
-        eraseItem(placement);
-        int shipSize = placement.getTemplate().getShipSize();
-        if (shipSize > 0) {
-            sizeCounts[shipSize - 1]--;
+        if (placement == current) {
+            modifyCurrent(null);
+        } else {
+            eraseItem(placement);
+            int shipSize = placement.getTemplate().getShipSize();
+            if (shipSize > 0) {
+                sizeCounts[shipSize - 1]--;
+            }
         }
     }
     

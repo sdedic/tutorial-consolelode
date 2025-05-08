@@ -27,16 +27,17 @@ import com.googlecode.lanterna.graphics.DoublePrintingTextGraphics;
 import com.googlecode.lanterna.graphics.TextGraphics;
 import com.googlecode.lanterna.graphics.TextGraphicsWriter;
 import com.googlecode.lanterna.input.KeyStroke;
-import static com.googlecode.lanterna.input.KeyType.ArrowDown;
 import com.googlecode.lanterna.screen.Screen;
 import com.googlecode.lanterna.screen.WrapBehaviour;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
 import one.dedic.consolelode.Controller;
 import one.dedic.consolelode.GameOptions;
+import one.dedic.consolelode.GameState;
 import one.dedic.consolelode.data.Cell;
 import one.dedic.consolelode.data.ItemTemplate;
 import one.dedic.consolelode.model.BoardState;
@@ -45,39 +46,38 @@ import one.dedic.consolelode.model.BoardState;
  *
  * @author sdedic
  */
-public class ShipShapeController implements Controller {
-    private final GameOptions options;
-    private final Screen screen;
-    private final TextGraphics graphics;
-
+public class ShipShapeController extends SetupController {
     private static final int SHIP_LIST_COL = 25;
     private static final int SHIP_LIST_ROW = 2;
     
     private static final int SHIP_SLOT_WIDTH = 15;
     private static final int SHIP_SLOT_HEIGHT = 5;
 
-    private TextGraphics g;
     private TextGraphics shipListG;
-    
     private int selectedIndex;
     private int size;
     private List<ItemTemplate> selectFrom = new ArrayList<>();
-    private List<TerminalPosition> promptPositions;
+    private List<TerminalPosition> promptPositions = new ArrayList<>();
     private int shipsPerRow;
+    private int shipWidth;
+    private int shipHeight;
 
-    public ShipShapeController(GameOptions options, Screen screen) {
-        this.options = options;
-        this.screen = screen;
-
-        graphics = screen.newTextGraphics();
-        g = graphics.newTextGraphics(new TerminalPosition(SHIP_LIST_COL, 0), new TerminalSize(
-                graphics.getSize().getColumns() - SHIP_LIST_COL, 30));
-
+    @Override
+    public void setup() {
+        super.setup();
         shipListG = graphics.newTextGraphics(new TerminalPosition(SHIP_LIST_COL, SHIP_LIST_ROW), 
                 new TerminalSize(graphics.getSize().getColumns() - SHIP_LIST_COL, 20));
         
     }
-    
+
+    @Override
+    public void initialize() {
+        super.initialize();
+        promptPositions = new ArrayList<>();
+        selectedIndex = 0;
+        setShipSize(boardState.getCurrentSize());
+    }
+
     void printInstructions() {
         TextGraphicsWriter writer = new TextGraphicsWriter(g);
         writer.putString("Vyber tvar lodi. Stiskni pismeno odpovidajici tvaru a potvrd ");
@@ -107,6 +107,8 @@ public class ShipShapeController implements Controller {
         }
         Collections.sort(filtered, (a, b) -> a.getId().compareToIgnoreCase(b.getId()));
         this.selectFrom = filtered;
+        this.shipWidth = selectFrom.stream().map(s -> s.getName().length() + 4).max(Comparator.naturalOrder()).get();
+        this.shipHeight = selectFrom.stream().map(s -> s.getHeight() + 3).max(Comparator.naturalOrder()).get();
     }
     
     int dx = 0;
@@ -132,14 +134,16 @@ public class ShipShapeController implements Controller {
     
     void printShipSlot(ItemTemplate t) {
         TextGraphicsWriter writer = new TextGraphicsWriter(
-                shipG.newTextGraphics(new TerminalPosition(2, 0), new TerminalSize(shipG.getSize().getColumns() - 2, 2))
+                shipG.newTextGraphics(new TerminalPosition(2, 0), 
+                        new TerminalSize(shipG.getSize().getColumns() - 2, 4))
         );
         writer.setWrapBehaviour(WrapBehaviour.WORD);
         writer.putString(t.getName());
         
         TextGraphics shape = 
                 new DoublePrintingTextGraphics(
-                shipG.newTextGraphics(new TerminalPosition(0, 2), new TerminalSize(shipG.getSize().getColumns(), shipG.getSize().getRows() - 3))
+                shipG.newTextGraphics(new TerminalPosition(0, 2), 
+                        new TerminalSize(shipG.getSize().getColumns(), shipG.getSize().getRows()))
         );
         
         for (int r = 0; r < t.getHeight(); r++) {
@@ -169,10 +173,10 @@ public class ShipShapeController implements Controller {
             shipG = shipListG.newTextGraphics(pos, new TerminalSize(SHIP_SLOT_WIDTH, SHIP_SLOT_HEIGHT));
             printShipSlot(t);
             count++;
-            dx += SHIP_SLOT_WIDTH;
-            if (dx +  SHIP_SLOT_WIDTH > shipListG.getSize().getColumns()) {
+            dx += shipWidth;
+            if (dx +  shipWidth > shipListG.getSize().getColumns()) {
                 dx = 0;
-                dy += SHIP_SLOT_HEIGHT;
+                dy += shipHeight;
                 
                 // priradi se jen poprve, pote uz bude > 0 a na `count` nebude nijak zalezet
                 if (shipsPerRow == 0) {
@@ -189,28 +193,31 @@ public class ShipShapeController implements Controller {
             paintChoice(i);
         }
     }
-    
+
     @Override
-    public Result execute() throws IOException {
-        printInstructions();
+    protected void printLayout() {
+        super.printLayout();
         drawShipList();
-        
-        Result r = null;
-        
-        do {
-            screen.refresh();
-            r = loop();
-        } while (r == null);
-        g.fill(' ');
-        screen.refresh();
-        return r;
+    }
+
+    @Override
+    protected void printDescription() {
+        super.printDescription();
+        printInstructions();
     }
     
     void clearPrompt() {
         paintChoice(selectedIndex, -1);
     }
+
+    @Override
+    protected GameState handleConfirmed(GameState state) {
+        boardState.setSelectedTemplate(this.getSelectedShip());
+        return state;
+    }
     
-    void printPrompt() {
+    @Override
+    protected void printPrompt() {
         paintChoice(selectedIndex);
     }
     
@@ -250,31 +257,24 @@ public class ShipShapeController implements Controller {
         selectedIndex += add;
     }
 
-    Result loop() throws IOException {
-        printPrompt();
-        
-        KeyStroke ks = screen.readInput();
+    @Override
+    protected NextState handle(KeyStroke ks) {
         switch (ks.getKeyType()) {
-            case ArrowUp:
+            case ARROW_UP:
                 moveUpDown(false);
                 break;
-            case ArrowDown:
+            case ARROW_DOWN:
                 moveUpDown(true);
                 break;
 
-            case ArrowLeft:
+            case ARROW_LEFT:
                 moveLeftRight(false);
                 break;
-            case ArrowRight:
+            case ARROW_RIGHT:
                 moveLeftRight(true);
                 break;
                 
-            case Enter:
-                return Result.OK;
-            case Escape:
-                return Result.CANCEL;
-                
-            case Character:
+            case CHARACTER:
                 int idx = ks.getCharacter().toString().toLowerCase().charAt(0) - 'a';
                 if (idx < 0 || idx >= selectFrom.size()) {
                     break;

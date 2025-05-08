@@ -25,72 +25,53 @@ import com.googlecode.lanterna.TextCharacter;
 import com.googlecode.lanterna.graphics.TextGraphics;
 import com.googlecode.lanterna.graphics.TextGraphicsWriter;
 import com.googlecode.lanterna.input.KeyStroke;
-import static com.googlecode.lanterna.input.KeyType.ArrowDown;
-import static com.googlecode.lanterna.input.KeyType.ArrowUp;
-import static com.googlecode.lanterna.input.KeyType.Character;
-import static com.googlecode.lanterna.input.KeyType.Enter;
 import com.googlecode.lanterna.screen.Screen;
 import com.googlecode.lanterna.screen.WrapBehaviour;
 import java.io.IOException;
-import one.dedic.consolelode.Controller;
-import one.dedic.consolelode.GameOptions;
+import one.dedic.consolelode.GameState;
 import one.dedic.consolelode.model.BoardState;
 
 /**
  *
  * @author sdedic
  */
-public class ShipSizeController implements Controller {
-    private final GameOptions options;
-    private final Screen screen;
-    private final TextGraphics graphics;
-    private BoardState boardState;
-    private BoardPrinter boardPrinter;
-    
-    TextGraphics g;
-    
+public class ShipSizeController extends SetupController {
     private int shipSize;
-
-    public ShipSizeController(GameOptions options, Screen screen) {
-        this.options = options;
-        this.screen = screen;
-        graphics = screen.newTextGraphics();
-        boardPrinter = new BoardPrinter(options, graphics.
-                newTextGraphics(new TerminalPosition(0, 0), new TerminalSize(24, 14)));
-        g = graphics.newTextGraphics(new TerminalPosition(SHIP_LIST_COL, 0), new TerminalSize(60, 15));
-    }
 
     public BoardState getBoardState() {
         return boardState;
     }
 
-    public void setBoardState(BoardState boardState) {
-        this.boardState = boardState;
-        boardPrinter.setBoardState(boardState);
-    }
-    
     public int getShipSize() {
         return shipSize;
     }
 
     @Override
-    public Result execute() throws IOException {
+    public void initialize() {
+        super.initialize();
         initShipSize();
-        printDescription();
-        boardPrinter.printBoardOutline();
+    }
+
+    @Override
+    protected void printLayout() {
+        super.printLayout();
         printShipSizeList();
-        
-        Result r = loop();
-        g.fill(' ');
-        screen.setCursorPosition(null);
-        screen.refresh();
-        return r;
+    }
+
+    @Override
+    protected NextState testValid() {
+        if (shipSize >= 0) {
+            return null;
+        } else {
+            return NextState.create(Result.OK, GameState.CONFIRM);
+        }
     }
     
-    void printDescription() {
-        TextGraphics g = graphics.newTextGraphics(new TerminalPosition(SHIP_LIST_COL, 0), new TerminalSize(60, 15));
-        g.fill(' ');
-        
+    /**
+     *
+     */
+    @Override
+    protected void printDescription() {
         TextGraphicsWriter writer = new TextGraphicsWriter(g);
         writer.setWrapBehaviour(WrapBehaviour.WORD);
         writer.putString("Vyber velikost lodi k umisteni. V seznamu je uvedeny pro kazdou velikost lodi pocet zbyvajicich.\n\n" +
@@ -104,7 +85,6 @@ public class ShipSizeController implements Controller {
         writer.disableModifiers(SGR.BOLD);
     }
     
-    private static final int SHIP_LIST_COL = 25;
     private static final int SHIP_LIST_HEADER = 4;
     private static final int SHIP_LIST_ROW = SHIP_LIST_HEADER + 1;
     
@@ -120,10 +100,11 @@ public class ShipSizeController implements Controller {
                 return;
             }
         }
-        throw new IllegalStateException("No ships");
+        shipSize = -1;
     }
     
-    void printPrompt() {
+    @Override
+    protected void printPrompt() {
         TerminalPosition pos = new TerminalPosition(SELECT_COL_ABS, SHIP_LIST_ROW - 1 + shipSize);
         screen.setCursorPosition(pos);
         screen.setCharacter(pos, new TextCharacter('?'));
@@ -181,107 +162,38 @@ public class ShipSizeController implements Controller {
             return shipSize;
         }
     }
-    
-    Result loop() throws IOException {
-        while (true) {
-            printPrompt();
-            screen.refresh();
-            KeyStroke ks = screen.readInput();
 
-            int ns = -1;
-            switch (ks.getKeyType()) {
-                case ArrowDown:
-                    ns = goDown();
-                    break;
-                case ArrowUp:
-                    ns = goUp();
-                    break;
-                case Character:
-                    char c = ks.getCharacter();
-                    if (c >= '1' && c < '1' + options.getMaxSize()) {
-                        ns = goTo(c - '0');
-                    }
-                    break;
-                case Enter:
-                    return Result.OK;
-                case Escape:
-                    return Result.CANCEL;
-            }
-            if (ns != -1) {
-                clearPrompt();
-                shipSize = ns;
-            }
+    @Override
+    protected NextState handle(KeyStroke ks) {
+        int ns = -1;
+        switch (ks.getKeyType()) {
+            case ARROW_DOWN:
+                ns = goDown();
+                break;
+            case ARROW_UP:
+                ns = goUp();
+                break;
+            case CHARACTER:
+                char c = java.lang.Character.toLowerCase(ks.getCharacter());
+                if (c >= '1' && c < '1' + options.getMaxSize()) {
+                    ns = goTo(c - '0');
+                } else if (c == 's') {
+                    return NextState.create(Result.OK, GameState.SAVE);
+                } else if (c == 'l') {
+                    
+                }
+                break;
         }
+        if (ns != -1) {
+            clearPrompt();
+            shipSize = ns;
+        }
+        return null;
     }
-    
-    static void vyberVelikostiLodi(Screen scn) throws IOException {
-        TextGraphics tg = scn.newTextGraphics();
-        TextGraphics g2 = tg.newTextGraphics(new TerminalPosition(25, 4), new TerminalSize(60, 10));
-        TextGraphicsWriter writer2 = new TextGraphicsWriter(g2);
-        writer2.enableModifiers(SGR.BOLD).putString("Velikost   Zbyva");
-        
-        writer2.setCursorPosition(new TerminalPosition(4, 1));
-        writer2.putString("1");
-        writer2.setCursorPosition(new TerminalPosition(13, 1));
-        writer2.putString("4");
 
-        writer2.setCursorPosition(new TerminalPosition(4, 2));
-        writer2.putString("2");
-        writer2.setCursorPosition(new TerminalPosition(13, 2));
-        writer2.putString("3");
-
-        writer2.setCursorPosition(new TerminalPosition(4, 3));
-        writer2.putString("3");
-        writer2.setCursorPosition(new TerminalPosition(13, 3));
-        writer2.putString("2");
-
-        writer2.setCursorPosition(new TerminalPosition(4, 4));
-        writer2.putString("4");
-        writer2.setCursorPosition(new TerminalPosition(13, 4));
-        writer2.putString("1");
-
-        writer2.setCursorPosition(new TerminalPosition(4, 5));
-        writer2.putString("4");
-        writer2.setCursorPosition(new TerminalPosition(13, 5));
-        writer2.putString("1");
-        
-        scn.setCursorPosition(new TerminalPosition(25 + 18, 5));
-        scn.setCharacter(25 + 18, 5, new TextCharacter('?'));
-        scn.refresh();
-        
-        int size = 1;
-        L: while (true) {
-            scn.setCharacter(25 + 18, 5 + size - 1, new TextCharacter(' '));
-            KeyStroke ks = scn.readInput();
-            
-            int ns = -1;
-            switch (ks.getKeyType()) {
-                case ArrowDown:
-                    ns = Math.min(5, size + 1);
-                    break;
-                case ArrowUp:
-                    ns = Math.max(1, size - 1);
-                    break;
-                case Enter:
-                    break L;
-                case Character:
-                    switch (ks.getCharacter()) {
-                        case '1':
-                        case '2':
-                        case '3':
-                        case '4':
-                            ns = ks.getCharacter() - '0';
-                            break;
-                        case '\n':
-                            break L;
-                    }
-            }
-            if (ns != -1) {
-                size = ns;
-                scn.setCursorPosition(new TerminalPosition(25 + 18, 5 + (size - 1)));
-                scn.setCharacter(25 + 18, 5 + (size - 1), new TextCharacter('?'));
-                scn.refresh();
-            }
-        }
+    @Override
+    protected GameState handleConfirmed(GameState state) {
+        boardState.setCurrentSize(shipSize);
+        return state;
     }
 }
